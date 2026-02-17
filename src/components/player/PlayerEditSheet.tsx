@@ -38,21 +38,22 @@ const FIELD_DEFS: FieldDef[] = [
     label: "Gender (optional)",
     kind: "category",
     options: [
-    //   { value: "unspecified", label: "Unspecified" },
+      { value: "unspecified", label: "Unspecified" },
       { value: "male", label: "Male" },
       { value: "female", label: "Female" },
     //   { value: "other", label: "Other" },
     ],
   },
   {
-    key: "pos",
+    key: "position",
     label: "Position (optional)",
     kind: "category",
     options: [
-      { value: "GK", label: "Goal" },
-      { value: "DF", label: "Defense" },
-      { value: "MD", label: "Midfield" },
-      { value: "FW", label: "Forward" },
+      { value: "unspecified", label: "Unspecified" },
+      { value: "Goalkeeper", label: "GK" },
+      { value: "Defense", label: "DF" },
+      { value: "Midfield", label: "MD" },
+      { value: "Forward", label: "FW" },
     ],
   },
 ];
