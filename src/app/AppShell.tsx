@@ -4,6 +4,12 @@ import SetupPage from "../pages/SetupPage";
 import TeamsPage from "../pages/TeamsPage";
 import LibraryPage from "../pages/LibraryPage";
 
+import type { GenerationSettings } from "../types/gen";
+import type { Player } from "../types/domain";
+import { DEFAULT_PLAYERSET_ID } from "../storage/playerSetHelpers";
+import { DB } from "../storage/DB";
+import { generateTeamsV0, type GeneratedTeams } from "../lib/logic/generateTeams";
+
 type TabKey = "players" | "setup" | "teams" | "library";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
@@ -14,6 +20,16 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 
 export default function AppShell() {
   const [tab, setTab] = useState<TabKey>("players");
+
+  const [settings, setSettings] = useState<GenerationSettings>({
+    playerSetId: DEFAULT_PLAYERSET_ID,
+    numTeams: 2,
+    criteriaOrder: ["gender", "position"], // UI only for now
+  });
+
+  const [lastGenerated, setLastGenerated] = useState<GeneratedTeams | null>(
+    null
+  );
 
   const title = useMemo(() => {
     switch (tab) {
@@ -28,10 +44,26 @@ export default function AppShell() {
     }
   }, [tab]);
 
+  async function generateAndGoToTeams(nextSettings?: GenerationSettings) {
+    const s = nextSettings ?? settings;
+
+    // Load players from the selected set (Default for now)
+    const set = await DB.playerSets.get(s.playerSetId);
+    const ids = set?.playerIds ?? [];
+
+    const players: Player[] = ids.length
+      ? await DB.players.bulkGet(ids).then((arr) => arr.filter(Boolean) as Player[])
+      : [];
+
+    const result = generateTeamsV0(players, Math.max(2, s.numTeams));
+    setLastGenerated(result);
+
+    setTab("teams");
+  }
+
   return (
     <div className="h-[100dvh] bg-slate-950 text-slate-50">
-        <div className="mx-auto flex h-[100dvh] max-w-md flex-col">
-        {/* Header */}
+      <div className="mx-auto flex h-[100dvh] max-w-md flex-col">
         <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/80 backdrop-blur pt-[env(safe-area-inset-top)]">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex flex-col">
@@ -51,15 +83,29 @@ export default function AppShell() {
           </div>
         </header>
 
-        {/* Main content */}
         <main className="flex-1 overflow-y-auto px-4 py-4">
           {tab === "players" && <PlayersPage />}
-          {tab === "setup" && <SetupPage />}
-          {tab === "teams" && <TeamsPage />}
+
+          {tab === "setup" && (
+            <SetupPage
+              settings={settings}
+              onChangeSettings={setSettings}
+              onGenerate={generateAndGoToTeams}
+            />
+          )}
+
+          {tab === "teams" && (
+            <TeamsPage
+              settings={settings}
+              lastGenerated={lastGenerated}
+              onReroll={() => generateAndGoToTeams()}
+              onGoToSetup={() => setTab("setup")}
+            />
+          )}
+
           {tab === "library" && <LibraryPage />}
         </main>
 
-        {/* Bottom tabs */}
         <nav className="sticky bottom-0 border-t border-slate-800 bg-slate-950/80 backdrop-blur pb-[env(safe-area-inset-bottom)]">
           <div className="grid grid-cols-3 gap-2 px-3 py-2">
             {TABS.map((t) => {

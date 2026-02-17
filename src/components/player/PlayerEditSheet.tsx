@@ -26,13 +26,13 @@ type FieldDef =
 
 // ✅ V2 fields (rating + gender). For V1, remove the gender def.
 const FIELD_DEFS: FieldDef[] = [
-//   {
-//     key: "rating",
-//     label: "Rating (optional)",
-//     kind: "number",
-//     placeholder: "e.g. 72",
-//     inputMode: "numeric",
-//   },
+  {
+    key: "rating",
+    label: "Rating (optional)",
+    kind: "number",
+    placeholder: "e.g. 72",
+    inputMode: "numeric",
+  },
   {
     key: "gender",
     label: "Gender (optional)",
