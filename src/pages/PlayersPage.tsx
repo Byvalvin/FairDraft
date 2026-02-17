@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DB } from "../storage/DB";
 import { newId } from "../storage/utils";
 import type { Player } from "../types/domain";
+import { addPlayerToDefaultSet, ensureDefaultPlayerSet, removePlayerFromDefaultSet } from "../storage/playerSetHelpers";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -26,9 +27,21 @@ export default function PlayersPage() {
       setError(e instanceof Error ? e.message : "Failed to load players");
     }
   }
+  const [activeSetName, setActiveSetName] = useState<string>("");
+  useEffect(() => {
+    void (async () => {
+        const set = await ensureDefaultPlayerSet();
+        setActiveSetName(set.name);
+        await refreshPlayers();
+    })();
+}, []);
+
 
   useEffect(() => {
-    void refreshPlayers();
+    void (async () => {
+        await ensureDefaultPlayerSet();
+        await refreshPlayers();
+    })();
   }, []);
 
   async function addPlayer() {
@@ -46,6 +59,7 @@ export default function PlayersPage() {
 
     try {
       await DB.players.add(player);
+      await addPlayerToDefaultSet(player.id);
       setName("");
       await refreshPlayers();
     } catch (e) {
@@ -57,6 +71,7 @@ export default function PlayersPage() {
   async function deletePlayer(id: string) {
     try {
       await DB.players.delete(id);
+      await removePlayerFromDefaultSet(id);
       await refreshPlayers();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete player");
@@ -72,7 +87,7 @@ export default function PlayersPage() {
           Add and manage players. Saved locally for offline use.
         </p>
       </div>
-
+      <div className="mt-1 text-xs text-slate-500">Active set: {activeSetName}</div>
       {/* Add player */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <div className="text-sm font-semibold text-slate-100">Add player</div>
