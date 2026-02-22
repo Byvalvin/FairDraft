@@ -8,7 +8,7 @@ import type { GenerationSettings } from "../types/gen";
 import type { Player } from "../types/domain";
 import { DEFAULT_PLAYERSET_ID } from "../storage/playerSetHelpers";
 import { DB } from "../storage/DB";
-import { generateTeamsV0, type GeneratedTeams } from "../lib/logic/generateTeams";
+import { generateTeamsV0, generateTeamsV1_numberGreedy, type GeneratedTeams } from "../lib/logic/generateTeams";
 
 type TabKey = "players" | "setup" | "teams" | "library";
 
@@ -25,6 +25,7 @@ export default function AppShell() {
     playerSetId: DEFAULT_PLAYERSET_ID,
     numTeams: 2,
     criteriaOrder: ["gender", "position"], // UI only for now
+    epsilon: 5,
   });
 
   const [lastGenerated, setLastGenerated] = useState<GeneratedTeams | null>(
@@ -55,7 +56,21 @@ export default function AppShell() {
       ? await DB.players.bulkGet(ids).then((arr) => arr.filter(Boolean) as Player[])
       : [];
 
-    const result = generateTeamsV0(players, Math.max(2, s.numTeams));
+    // const result = generateTeamsV0(players, Math.max(2, s.numTeams));
+    const numTeams = Math.max(2, s.numTeams);
+    // pick first enabled numeric criterion (for now: any key that exists as number on at least one player)
+    const numericKey =
+      s.criteriaOrder.find((key) =>
+        players.some((p) => p.criteria[key]?.type === "number")
+      ) ?? null;
+
+    const result = numericKey
+      ? generateTeamsV1_numberGreedy(players, numTeams, numericKey, {
+          fallbackValue: 60,
+          epsilon: s.epsilon ?? 0,
+        })
+      : generateTeamsV0(players, numTeams);
+
     setLastGenerated(result);
 
     setTab("teams");

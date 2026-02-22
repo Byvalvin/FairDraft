@@ -99,6 +99,21 @@ export default function TeamsPage({
             const s = summarizeTeam(players, key);
             return { key, summary: s };
           });
+          const ratingEnabled = settings.criteriaOrder.includes("rating");
+
+          let ratingSum = 0;
+          let ratingCount = 0;
+          if (ratingEnabled) {
+            for (const p of players) {
+              const v = readCriterion(p, "rating");
+              if (typeof v === "number") {
+                ratingSum += v;
+                ratingCount += 1;
+              }
+            }
+          }
+          const ratingAvg = ratingCount ? ratingSum / ratingCount : null;
+
 
           return (
             <div
@@ -107,7 +122,15 @@ export default function TeamsPage({
             >
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-slate-100">{t.name}</div>
-                <div className="text-xs text-slate-400">{players.length} players</div>
+                <div className="text-right text-xs text-slate-400">
+                <div>{players.length} players</div>
+                  {ratingEnabled && (
+                    <div>
+                      rating sum: {ratingSum.toFixed(0)}
+                      {ratingAvg != null ? ` · avg: ${ratingAvg.toFixed(1)}` : ""}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <ul className="mt-3 space-y-2">
