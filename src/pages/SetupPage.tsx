@@ -11,6 +11,7 @@ const AVAILABLE_CRITERIA: Array<{ key: string; label: string }> = [
   { key: "position", label: "Position" },
   // rating can be added later:
   { key: "rating", label: "Rating" },
+  // { key: "balliq", label: "Balliq" },
 ];
 
 export default function SetupPage({ settings, onChangeSettings, onGenerate }: Props) {

@@ -35,7 +35,7 @@ export function generateTeamsV0(players: Player[], numTeams: number): GeneratedT
 }
 
 /**
- * Phase 1: Rating-balanced teams (greedy).
+ * Phase 1: Rating-balanced teams (greedy)-ISH.
  * - Sort by rating desc (missing rating uses fallbackRating)
  * - Assign each player to the team with lowest current rating sum
  */
