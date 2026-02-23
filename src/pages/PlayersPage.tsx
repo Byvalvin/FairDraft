@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DB } from "../storage/DB";
 import { newId } from "../storage/utils";
 import type { Player } from "../types/domain";
-import { addPlayerToDefaultSet, ensureDefaultPlayerSet, removePlayerFromDefaultSet } from "../storage/playerSetHelpers";
+import { addPlayerToDefaultSet, ensureDefaultPlayerSet, removePlayerFromAllSets } from "../storage/playerSetHelpers";
 import PlayerEditSheet from "../components/player/PlayerEditSheet";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
@@ -13,10 +13,16 @@ export default function PlayersPage() {
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [name, setName] = useState("");
+  const [query, setQuery] = useState("");
 
   const canAdd = useMemo(() => name.trim().length > 0, [name]);
-  
-  const [activeSetName, setActiveSetName] = useState<string>("");
+
+  const showSearch = players.length >= 5;
+  const filteredPlayers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return players;
+    return players.filter((p) => p.name.toLowerCase().includes(q));
+  }, [players, query]);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -70,7 +76,7 @@ export default function PlayersPage() {
   async function deletePlayer(id: string) {
     try {
       await DB.players.delete(id);
-      await removePlayerFromDefaultSet(id);
+      await removePlayerFromAllSets(id);
       await refreshPlayers({ silent: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete player");
@@ -90,8 +96,7 @@ export default function PlayersPage() {
     }, [sheetOpen, selectedId, selectedPlayer]);
   useEffect(() => {
     void (async () => {
-        const set = await ensureDefaultPlayerSet();
-        setActiveSetName(set.name);
+        await ensureDefaultPlayerSet();
         await refreshPlayers(); // silent false for inital load
     })();
     }, []);
@@ -103,7 +108,6 @@ export default function PlayersPage() {
         <p className="text-sm text-slate-400">
           Add and manage players. Saved locally for offline use.
         </p>
-        <div className="mt-1 text-xs text-slate-500">Active set: {activeSetName}</div>
       </div>
       {/* Add player */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
@@ -145,7 +149,9 @@ export default function PlayersPage() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold text-slate-200">
-            Players ({players.length})
+            {query.trim()
+              ? `Players (${filteredPlayers.length} / ${players.length})`
+              : `Players (${players.length})`}
           </div>
           <button
             type="button"
@@ -156,13 +162,26 @@ export default function PlayersPage() {
           </button>
         </div>
 
+        {showSearch && (
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search players…"
+            className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
+          />
+        )}
+
         {players.length === 0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
             No players yet. Add your first player above.
           </div>
+        ) : filteredPlayers.length === 0 ? (
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
+            No matching players.
+          </div>
         ) : (
           <ul className="space-y-2">
-            {players.map((p) => (
+            {filteredPlayers.map((p) => (
                 <li
                     key={p.id}
                     onClick={() => {

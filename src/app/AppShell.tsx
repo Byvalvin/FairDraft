@@ -3,6 +3,7 @@ import PlayersPage from "../pages/PlayersPage";
 import SetupPage from "../pages/SetupPage";
 import TeamsPage from "../pages/TeamsPage";
 import LibraryPage from "../pages/LibraryPage";
+import PlayerSetsPage from "../pages/PlayerSetsPage";
 
 import type { GenerationSettings } from "../types/gen";
 import type { Player } from "../types/domain";
@@ -10,7 +11,7 @@ import { DEFAULT_PLAYERSET_ID } from "../storage/playerSetHelpers";
 import { DB } from "../storage/DB";
 import { generateTeamsV0, generateTeamsV1_numberGreedy, type GeneratedTeams } from "../lib/logic/generateTeams";
 
-type TabKey = "players" | "setup" | "teams" | "library";
+type TabKey = "players" | "setup" | "teams" | "library" | "playerSets";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "players", label: "Players" },
@@ -42,6 +43,8 @@ export default function AppShell() {
         return "Teams";
       case "library":
         return "Library";
+      case "playerSets":
+        return "Player Sets";
     }
   }, [tab]);
 
@@ -90,10 +93,10 @@ export default function AppShell() {
 
             <button
               type="button"
-              onClick={() => setTab("library")}
+              onClick={() => setTab(tab === "playerSets" ? "library" : "library")}
               className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
             >
-              Library
+              {tab === "playerSets" ? "Back" : "Library"}
             </button>
           </div>
         </header>
@@ -118,7 +121,11 @@ export default function AppShell() {
             />
           )}
 
-          {tab === "library" && <LibraryPage />}
+          {tab === "library" && (
+            <LibraryPage onOpenPlayerSets={() => setTab("playerSets")} />
+          )}
+
+          {tab === "playerSets" && <PlayerSetsPage />}
         </main>
 
         <nav className="sticky bottom-0 border-t border-slate-800 bg-slate-950/80 backdrop-blur pb-[env(safe-area-inset-bottom)]">

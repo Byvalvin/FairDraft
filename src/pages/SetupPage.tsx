@@ -1,4 +1,7 @@
 import type { GenerationSettings } from "../types/gen";
+import type { PlayerSet } from "../types/domain";
+import { useEffect, useState } from "react";
+import { DB } from "../storage/DB";
 
 type Props = {
   settings: GenerationSettings;
@@ -15,6 +18,15 @@ const AVAILABLE_CRITERIA: Array<{ key: string; label: string }> = [
 ];
 
 export default function SetupPage({ settings, onChangeSettings, onGenerate }: Props) {
+  const [sets, setSets] = useState<PlayerSet[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const rows = await DB.playerSets.orderBy("createdAt").reverse().toArray();
+      setSets(rows);
+    })();
+  }, []);
+
   const enabled = settings.criteriaOrder
     .map((key) => AVAILABLE_CRITERIA.find((c) => c.key === key))
     .filter(Boolean) as Array<{ key: string; label: string }>;
@@ -75,6 +87,21 @@ export default function SetupPage({ settings, onChangeSettings, onGenerate }: Pr
             +
           </button>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <div className="text-sm font-semibold text-slate-100">Player set</div>
+        <select
+          value={settings.playerSetId}
+          onChange={(e) => onChangeSettings({ ...settings, playerSetId: e.target.value })}
+          className="mt-3 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+        >
+          {sets.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
