@@ -11,7 +11,11 @@ import PlayerSetEditSheet from "../components/playerset/PlayerSetEditSheet";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
-export default function PlayerSetsPage() {
+type Props = {
+  onGoToPlayers?: () => void;
+};
+
+export default function PlayerSetsPage({ onGoToPlayers }: Props) {
   const [status, setStatus] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -206,6 +210,7 @@ export default function PlayerSetsPage() {
         onRename={handleRename}
         onTogglePlayer={handleTogglePlayer}
         onDelete={handleDelete}
+        onGoToPlayers={onGoToPlayers}
       />
     </div>
   );

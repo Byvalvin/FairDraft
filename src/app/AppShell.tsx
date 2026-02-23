@@ -1,17 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PlayersPage from "../pages/PlayersPage";
 import SetupPage from "../pages/SetupPage";
 import TeamsPage from "../pages/TeamsPage";
 import LibraryPage from "../pages/LibraryPage";
 import PlayerSetsPage from "../pages/PlayerSetsPage";
+import CriteriaPage from "../pages/CriteriaPage";
 
 import type { GenerationSettings } from "../types/gen";
 import type { Player } from "../types/domain";
 import { DEFAULT_PLAYERSET_ID } from "../storage/playerSetHelpers";
 import { DB } from "../storage/DB";
 import { generateTeamsV0, generateTeamsV1_numberGreedy, type GeneratedTeams } from "../lib/logic/generateTeams";
+import { ensureDefaultCriteria } from "../storage/criteriaHelpers";
 
-type TabKey = "players" | "setup" | "teams" | "library" | "playerSets";
+type TabKey = "players" | "setup" | "teams" | "library" | "playerSets" | "criteria";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "players", label: "Players" },
@@ -25,13 +27,17 @@ export default function AppShell() {
   const [settings, setSettings] = useState<GenerationSettings>({
     playerSetId: DEFAULT_PLAYERSET_ID,
     numTeams: 2,
-    criteriaOrder: ["gender", "position"], // UI only for now
+    criteriaOrder: [],
     epsilon: 5,
   });
 
   const [lastGenerated, setLastGenerated] = useState<GeneratedTeams | null>(
     null
   );
+
+  useEffect(() => {
+    void ensureDefaultCriteria();
+  }, []);
 
   const title = useMemo(() => {
     switch (tab) {
@@ -45,6 +51,8 @@ export default function AppShell() {
         return "Library";
       case "playerSets":
         return "Player Sets";
+      case "criteria":
+        return "Criteria";
     }
   }, [tab]);
 
@@ -62,8 +70,10 @@ export default function AppShell() {
     // const result = generateTeamsV0(players, Math.max(2, s.numTeams));
     const numTeams = Math.max(2, s.numTeams);
     // pick first enabled numeric criterion (for now: any key that exists as number on at least one player)
+    const criteriaDefs = await DB.criteria.toArray();
     const numericKey =
       s.criteriaOrder.find((key) =>
+        criteriaDefs.some((d) => d.id === key && d.type === "number") &&
         players.some((p) => p.criteria[key]?.type === "number")
       ) ?? null;
 
@@ -93,10 +103,12 @@ export default function AppShell() {
 
             <button
               type="button"
-              onClick={() => setTab(tab === "playerSets" ? "library" : "library")}
+              onClick={() =>
+                setTab(tab === "playerSets" || tab === "criteria" ? "library" : "library")
+              }
               className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
             >
-              {tab === "playerSets" ? "Back" : "Library"}
+              {tab === "playerSets" || tab === "criteria" ? "Back" : "Library"}
             </button>
           </div>
         </header>
@@ -122,10 +134,17 @@ export default function AppShell() {
           )}
 
           {tab === "library" && (
-            <LibraryPage onOpenPlayerSets={() => setTab("playerSets")} />
+            <LibraryPage
+              onOpenPlayerSets={() => setTab("playerSets")}
+              onOpenCriteria={() => setTab("criteria")}
+            />
           )}
 
-          {tab === "playerSets" && <PlayerSetsPage />}
+          {tab === "playerSets" && (
+            <PlayerSetsPage onGoToPlayers={() => setTab("players")} />
+          )}
+
+          {tab === "criteria" && <CriteriaPage />}
         </main>
 
         <nav className="sticky bottom-0 border-t border-slate-800 bg-slate-950/80 backdrop-blur pb-[env(safe-area-inset-bottom)]">

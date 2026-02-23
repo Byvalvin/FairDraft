@@ -1,7 +1,8 @@
 import type { GenerationSettings } from "../types/gen";
-import type { PlayerSet } from "../types/domain";
+import type { CriterionDef, PlayerSet } from "../types/domain";
 import { useEffect, useState } from "react";
 import { DB } from "../storage/DB";
+import { ensureDefaultCriteria } from "../storage/criteriaHelpers";
 
 type Props = {
   settings: GenerationSettings;
@@ -9,16 +10,9 @@ type Props = {
   onGenerate: (nextSettings?: GenerationSettings) => Promise<void>;
 };
 
-const AVAILABLE_CRITERIA: Array<{ key: string; label: string }> = [
-  { key: "gender", label: "Gender" },
-  { key: "position", label: "Position" },
-  // rating can be added later:
-  { key: "rating", label: "Rating" },
-  // { key: "balliq", label: "Balliq" },
-];
-
 export default function SetupPage({ settings, onChangeSettings, onGenerate }: Props) {
   const [sets, setSets] = useState<PlayerSet[]>([]);
+  const [criteriaDefs, setCriteriaDefs] = useState<CriterionDef[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -27,11 +21,32 @@ export default function SetupPage({ settings, onChangeSettings, onGenerate }: Pr
     })();
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      await ensureDefaultCriteria();
+      const rows = await DB.criteria.orderBy("createdAt").toArray();
+      setCriteriaDefs(rows);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (criteriaDefs.length === 0) return;
+    const ids = criteriaDefs.map((c) => c.id);
+    const filtered = settings.criteriaOrder.filter((id) => ids.includes(id));
+    if (filtered.length !== settings.criteriaOrder.length) {
+      onChangeSettings({ ...settings, criteriaOrder: filtered });
+      return;
+    }
+    if (settings.criteriaOrder.length === 0) {
+      onChangeSettings({ ...settings, criteriaOrder: ids });
+    }
+  }, [criteriaDefs, settings, onChangeSettings]);
+
   const enabled = settings.criteriaOrder
-    .map((key) => AVAILABLE_CRITERIA.find((c) => c.key === key))
-    .filter(Boolean) as Array<{ key: string; label: string }>;
-  const disabled = AVAILABLE_CRITERIA.filter(
-    (c) => !settings.criteriaOrder.includes(c.key)
+    .map((id) => criteriaDefs.find((c) => c.id === id))
+    .filter(Boolean) as CriterionDef[];
+  const disabled = criteriaDefs.filter(
+    (c) => !settings.criteriaOrder.includes(c.id)
   );
 
   function setNumTeams(n: number) {
@@ -114,30 +129,30 @@ export default function SetupPage({ settings, onChangeSettings, onGenerate }: Pr
           {/* Enabled (ordered) */}
           {enabled.map((c) => (
             <div
-              key={c.key}
+              key={c.id}
               className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3"
             >
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
                   checked={true}
-                  onChange={() => toggleCriterion(c.key)}
+                  onChange={() => toggleCriterion(c.id)}
                   className="h-4 w-4 accent-slate-200"
                 />
-                <div className="text-sm font-semibold text-slate-100">{c.label}</div>
+                <div className="text-sm font-semibold text-slate-100">{c.name}</div>
               </div>
 
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => move(c.key, -1)}
+                  onClick={() => move(c.id, -1)}
                   className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
                 >
                   ↑
                 </button>
                 <button
                   type="button"
-                  onClick={() => move(c.key, 1)}
+                  onClick={() => move(c.id, 1)}
                   className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
                 >
                   ↓
@@ -153,18 +168,18 @@ export default function SetupPage({ settings, onChangeSettings, onGenerate }: Pr
               <div className="space-y-2">
                 {disabled.map((c) => (
                   <div
-                    key={c.key}
+                    key={c.id}
                     className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3"
                   >
                     <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={false}
-                        onChange={() => toggleCriterion(c.key)}
+                        onChange={() => toggleCriterion(c.id)}
                         className="h-4 w-4 accent-slate-200"
                       />
                       <div className="text-sm font-semibold text-slate-100">
-                        {c.label}
+                        {c.name}
                       </div>
                     </div>
 

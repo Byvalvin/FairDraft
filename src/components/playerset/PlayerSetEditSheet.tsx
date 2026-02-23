@@ -11,6 +11,7 @@ type Props = {
   onRename: (setId: string, name: string) => Promise<void>;
   onTogglePlayer: (setId: string, playerId: string) => Promise<void>;
   onDelete: (setId: string) => Promise<void>;
+  onGoToPlayers?: () => void;
 };
 
 export default function PlayerSetEditSheet({
@@ -21,6 +22,7 @@ export default function PlayerSetEditSheet({
   onRename,
   onTogglePlayer,
   onDelete,
+  onGoToPlayers,
 }: Props) {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -111,7 +113,19 @@ export default function PlayerSetEditSheet({
 
             {players.length === 0 ? (
               <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900 p-3 text-sm text-slate-400">
-                No players yet. Add players first from the Players tab.
+                <div>No players yet.</div>
+                {onGoToPlayers && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenChange(false);
+                      onGoToPlayers();
+                    }}
+                    className="mt-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                  >
+                    Go to Players
+                  </button>
+                )}
               </div>
             ) : (
               <div className="mt-3 space-y-2">

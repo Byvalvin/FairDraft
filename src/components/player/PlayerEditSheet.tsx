@@ -1,62 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import BottomSheet from "../BottomSheet";
-import type { CriterionValue, Player } from "../../types/domain";
+import type { CriterionDef, CriterionValue, Player } from "../../types/domain";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   player: Player | null;
+  criteriaDefs: CriterionDef[];
   onSave: (updated: Player) => Promise<void>;
 };
-
-type FieldDef =
-  | {
-      key: string;
-      label: string;
-      kind: "number";
-      placeholder?: string;
-      inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
-    }
-  | {
-      key: string;
-      label: string;
-      kind: "category";
-      options: Array<{ value: string; label: string }>;
-    };
-
-// ✅ V2 fields (rating + gender). For V1, remove the gender def.
-const FIELD_DEFS: FieldDef[] = [
-  {
-    key: "rating",
-    label: "Rating (optional)",
-    kind: "number",
-    placeholder: "e.g. 72",
-    inputMode: "numeric",
-  },
-  {
-    key: "gender",
-    label: "Gender (optional)",
-    kind: "category",
-    options: [
-      { value: "unspecified", label: "Unspecified" },
-      { value: "male", label: "Male" },
-      { value: "female", label: "Female" },
-    //   { value: "other", label: "Other" },
-    ],
-  },
-  {
-    key: "position",
-    label: "Position (optional)",
-    kind: "category",
-    options: [
-      { value: "unspecified", label: "Unspecified" },
-      { value: "Goalkeeper", label: "GK" },
-      { value: "Defense", label: "DF" },
-      { value: "Midfield", label: "MD" },
-      { value: "Forward", label: "FW" },
-    ],
-  },
-];
 
 function readNumber(player: Player, key: string): number | null {
   const v = player.criteria[key];
@@ -72,6 +24,7 @@ export default function PlayerEditSheet({
   open,
   onOpenChange,
   player,
+  criteriaDefs,
   onSave,
 }: Props) {
   const [name, setName] = useState("");
@@ -86,18 +39,17 @@ export default function PlayerEditSheet({
     setName(player.name);
 
     const initial: Record<string, string> = {};
-    for (const def of FIELD_DEFS) {
-      if (def.kind === "number") {
-        const n = readNumber(player, def.key);
-        initial[def.key] = n == null ? "" : String(n);
+    for (const def of criteriaDefs) {
+      if (def.type === "number") {
+        const n = readNumber(player, def.id);
+        initial[def.id] = n == null ? "" : String(n);
       } else {
-        const c = readCategory(player, def.key);
-        // default to "unspecified" if not present
-        initial[def.key] = c ?? "unspecified";
+        const c = readCategory(player, def.id);
+        initial[def.id] = c ?? "unspecified";
       }
     }
     setFieldValues(initial);
-  }, [player]);
+  }, [player, criteriaDefs]);
 
   const canSave = useMemo(
     () => name.trim().length > 0 && !saving,
@@ -115,23 +67,23 @@ export default function PlayerEditSheet({
 
     const nextCriteria: Record<string, CriterionValue> = { ...player.criteria };
 
-    for (const def of FIELD_DEFS) {
-      const raw = fieldValues[def.key] ?? "";
+    for (const def of criteriaDefs) {
+      const raw = fieldValues[def.id] ?? "";
 
-      if (def.kind === "number") {
+      if (def.type === "number") {
         if (raw.trim() === "") {
-          delete nextCriteria[def.key];
+          delete nextCriteria[def.id];
           continue;
         }
         const n = Number(raw);
         if (!Number.isFinite(n)) return;
-        nextCriteria[def.key] = { type: "number", value: n };
+        nextCriteria[def.id] = { type: "number", value: n };
       } else {
         if (raw === "unspecified" || raw.trim() === "") {
-          delete nextCriteria[def.key];
+          delete nextCriteria[def.id];
           continue;
         }
-        nextCriteria[def.key] = { type: "category", value: raw };
+        nextCriteria[def.id] = { type: "category", value: raw };
       }
     }
 
@@ -170,18 +122,18 @@ export default function PlayerEditSheet({
             />
           </div>
 
-          {FIELD_DEFS.map((def) => {
-            if (def.kind === "number") {
+          {criteriaDefs.map((def) => {
+            if (def.type === "number") {
               return (
-                <div key={def.key}>
+                <div key={def.id}>
                   <label className="text-xs font-semibold text-slate-300">
-                    {def.label}
+                    {def.name} (optional)
                   </label>
                   <input
-                    inputMode={def.inputMode}
-                    value={fieldValues[def.key] ?? ""}
-                    onChange={(e) => setField(def.key, e.target.value)}
-                    placeholder={def.placeholder}
+                    inputMode="numeric"
+                    value={fieldValues[def.id] ?? ""}
+                    onChange={(e) => setField(def.id, e.target.value)}
+                    placeholder="e.g. 72"
                     className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
                   />
                 </div>
@@ -189,18 +141,19 @@ export default function PlayerEditSheet({
             }
 
             return (
-              <div key={def.key}>
+              <div key={def.id}>
                 <label className="text-xs font-semibold text-slate-300">
-                  {def.label}
+                  {def.name} (optional)
                 </label>
                 <select
-                  value={fieldValues[def.key] ?? "unspecified"}
-                  onChange={(e) => setField(def.key, e.target.value)}
+                  value={fieldValues[def.id] ?? "unspecified"}
+                  onChange={(e) => setField(def.id, e.target.value)}
                   className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400/30"
                 >
-                  {def.options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
+                  <option value="unspecified">Unspecified</option>
+                  {(def.options ?? []).map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
                     </option>
                   ))}
                 </select>

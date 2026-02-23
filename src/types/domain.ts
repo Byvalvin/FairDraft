@@ -12,6 +12,15 @@ export type Player = {
   updatedAt: number;
 };
 
+export type CriterionDef = {
+  id: Id;
+  name: string;
+  type: "number" | "category";
+  options?: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type PlayerSet = {
   id: Id;
   name: string;
