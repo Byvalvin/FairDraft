@@ -1,5 +1,5 @@
 import type { GenerationSettings } from "../types/gen";
-import type { CriterionDef, PlayerSet } from "../types/domain";
+import type { CriterionDef, Player, PlayerSet } from "../types/domain";
 import { useEffect, useState } from "react";
 import { DB } from "../storage/DB";
 import { ensureDefaultCriteria } from "../storage/criteriaHelpers";
@@ -13,6 +13,7 @@ type Props = {
 export default function SetupPage({ settings, onChangeSettings, onGenerate }: Props) {
   const [sets, setSets] = useState<PlayerSet[]>([]);
   const [criteriaDefs, setCriteriaDefs] = useState<CriterionDef[]>([]);
+  const [playersInSet, setPlayersInSet] = useState<Player[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -30,15 +31,24 @@ export default function SetupPage({ settings, onChangeSettings, onGenerate }: Pr
   }, []);
 
   useEffect(() => {
+    void (async () => {
+      const set = await DB.playerSets.get(settings.playerSetId);
+      const ids = set?.playerIds ?? [];
+      const players = ids.length
+        ? await DB.players
+            .bulkGet(ids)
+            .then((arr) => arr.filter(Boolean) as Player[])
+        : [];
+      setPlayersInSet(players);
+    })();
+  }, [settings.playerSetId]);
+
+  useEffect(() => {
     if (criteriaDefs.length === 0) return;
     const ids = criteriaDefs.map((c) => c.id);
     const filtered = settings.criteriaOrder.filter((id) => ids.includes(id));
     if (filtered.length !== settings.criteriaOrder.length) {
       onChangeSettings({ ...settings, criteriaOrder: filtered });
-      return;
-    }
-    if (settings.criteriaOrder.length === 0) {
-      onChangeSettings({ ...settings, criteriaOrder: ids });
     }
   }, [criteriaDefs, settings, onChangeSettings]);
 
@@ -124,6 +134,33 @@ export default function SetupPage({ settings, onChangeSettings, onGenerate }: Pr
         <div className="mt-1 text-xs text-slate-400">
           Enable criteria and reorder by importance (top = most important).
         </div>
+        {settings.criteriaOrder.length === 0 && (
+          <div className="mt-2 text-xs text-slate-500">
+            No criteria selected — teams will be generated randomly.
+          </div>
+        )}
+
+        {enabled.length > 0 && playersInSet.length > 0 && (
+          (() => {
+            const rows = enabled
+              .map((c) => ({
+                id: c.id,
+                name: c.name,
+                missing: playersInSet.filter((p) => !p.criteria[c.id]).length,
+              }))
+              .filter((r) => r.missing > 0);
+            if (rows.length === 0) return null;
+            return (
+              <div className="mt-3 space-y-1 rounded-2xl border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-200">
+                {rows.map((r) => (
+                  <div key={r.id}>
+                    Missing {r.name}: {r.missing}/{playersInSet.length}
+                  </div>
+                ))}
+              </div>
+            );
+          })()
+        )}
 
         <div className="mt-3 space-y-2">
           {/* Enabled (ordered) */}

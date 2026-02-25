@@ -7,10 +7,15 @@ import PlayerSetsPage from "../pages/PlayerSetsPage";
 import CriteriaPage from "../pages/CriteriaPage";
 
 import type { GenerationSettings } from "../types/gen";
-import type { Player } from "../types/domain";
+import type { CriterionDef, Player } from "../types/domain";
 import { DEFAULT_PLAYERSET_ID } from "../storage/playerSetHelpers";
 import { DB } from "../storage/DB";
-import { generateTeamsV0, generateTeamsV1_numberGreedy, type GeneratedTeams } from "../lib/logic/generateTeams";
+import {
+  generateTeamsV0,
+  generateTeamsV1_numberGreedy,
+  generateTeamsV2_multiCriteria,
+  type GeneratedTeams,
+} from "../lib/logic/generateTeams";
 import { ensureDefaultCriteria } from "../storage/criteriaHelpers";
 
 type TabKey = "players" | "setup" | "teams" | "library" | "playerSets" | "criteria";
@@ -21,6 +26,11 @@ type EpsilonInfo = {
   epsNorm: number;
   stdevN: number;
   range: number;
+};
+
+type MissingSummary = {
+  totalPlayers: number;
+  rows: Array<{ id: string; name: string; missing: number }>;
 };
 
 const TABS: Array<{ key: TabKey; label: string }> = [
@@ -44,9 +54,17 @@ export default function AppShell() {
   const [lastEpsilonInfo, setLastEpsilonInfo] = useState<EpsilonInfo | null>(
     null
   );
+  const [lastMissingSummary, setLastMissingSummary] = useState<MissingSummary | null>(
+    null
+  );
+  const [criteriaDefs, setCriteriaDefs] = useState<CriterionDef[]>([]);
 
   useEffect(() => {
-    void ensureDefaultCriteria();
+    void (async () => {
+      await ensureDefaultCriteria();
+      const rows = await DB.criteria.orderBy("createdAt").toArray();
+      setCriteriaDefs(rows);
+    })();
   }, []);
 
   const title = useMemo(() => {
@@ -81,11 +99,15 @@ export default function AppShell() {
     const numTeams = Math.max(2, s.numTeams);
     // pick first enabled numeric criterion (for now: any key that exists as number on at least one player)
     const criteriaDefs = await DB.criteria.toArray();
+    const enabledDefs = criteriaDefs.filter((d) =>
+      s.criteriaOrder.includes(d.id)
+    );
     const numericKey =
       s.criteriaOrder.find((key) =>
         criteriaDefs.some((d) => d.id === key && d.type === "number") &&
         players.some((p) => p.criteria[key]?.type === "number")
       ) ?? null;
+    const hasCategory = enabledDefs.some((d) => d.type === "category");
 
     function computeEpsilonRawForKey(key: string): EpsilonInfo | null {
       const values: number[] = [];
@@ -118,15 +140,31 @@ export default function AppShell() {
     }
 
     const epsInfo = numericKey ? computeEpsilonRawForKey(numericKey) : null;
-    const result = numericKey
+    const useMulti =
+      s.criteriaOrder.length >= 2 || hasCategory;
+    const result = useMulti
+      ? generateTeamsV2_multiCriteria(players, numTeams, s.criteriaOrder, criteriaDefs)
+      : numericKey
       ? generateTeamsV1_numberGreedy(players, numTeams, numericKey, {
           fallbackValue: 60,
           epsilon: epsInfo?.epsilon ?? 0,
         })
       : generateTeamsV0(players, numTeams);
 
+    const missingRows = enabledDefs
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        missing: players.filter((p) => !p.criteria[d.id]).length,
+      }))
+      .filter((r) => r.missing > 0);
+
     setLastGenerated(result);
     setLastEpsilonInfo(epsInfo);
+    setLastMissingSummary({
+      totalPlayers: players.length,
+      rows: missingRows,
+    });
 
     setTab("teams");
   }
@@ -171,6 +209,8 @@ export default function AppShell() {
               settings={settings}
               lastGenerated={lastGenerated}
               epsilonInfo={lastEpsilonInfo}
+              criteriaDefs={criteriaDefs}
+              missingSummary={lastMissingSummary}
               onReroll={() => generateAndGoToTeams()}
               onGoToSetup={() => setTab("setup")}
             />

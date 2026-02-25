@@ -6,6 +6,11 @@ import type { GeneratedTeams } from "../lib/logic/generateTeams";
 type Props = {
   settings: GenerationSettings;
   lastGenerated: GeneratedTeams | null;
+  criteriaDefs: Array<{ id: string; name: string }>;
+  missingSummary?: {
+    totalPlayers: number;
+    rows: Array<{ id: string; name: string; missing: number }>;
+  } | null;
   epsilonInfo?: {
     key: string;
     epsilon: number;
@@ -68,9 +73,18 @@ type FairnessDetails =
       fallbackValue: number;
     };
 
+type CategoryFairness = {
+  key: string;
+  score: number; // 0..100
+  missingCount: number;
+  totalPlayers: number;
+};
+
 export default function TeamsPage({
   settings,
   lastGenerated,
+  criteriaDefs,
+  missingSummary,
   epsilonInfo,
   onReroll,
   onGoToSetup,
@@ -100,6 +114,8 @@ export default function TeamsPage({
   }
 
   const { teams, playersById } = lastGenerated;
+  const labelFor = (id: string) =>
+    criteriaDefs.find((c) => c.id === id)?.name ?? id;
 
   // Keep in sync with AppShell generator call
   const FALLBACK_VALUE = 60;
@@ -114,6 +130,7 @@ export default function TeamsPage({
 
   // Compute fairness details
   let fairness: FairnessDetails = { kind: "none" };
+  const categoryScores: CategoryFairness[] = [];
 
   if (numericKey) {
     const teamSums: number[] = teams.map((t) => {
@@ -162,6 +179,69 @@ export default function TeamsPage({
     };
   }
 
+  const categoryKeys = settings.criteriaOrder.filter((key) =>
+    teams.some((t) =>
+      t.playerIds.some((id) => playersById[id]?.criteria[key]?.type === "category")
+    )
+  );
+
+  for (const key of categoryKeys) {
+    const countsTotal: Record<string, number> = {};
+    let totalPlayers = 0;
+    let missingCount = 0;
+
+    for (const t of teams) {
+      for (const id of t.playerIds) {
+        totalPlayers += 1;
+        const v = playersById[id]?.criteria[key];
+        if (v?.type !== "category") {
+          missingCount += 1;
+          continue;
+        }
+        countsTotal[v.value] = (countsTotal[v.value] ?? 0) + 1;
+      }
+    }
+
+    let scoreSum = 0;
+    let scoreCount = 0;
+
+    for (const [value, total] of Object.entries(countsTotal)) {
+      const target = total / teams.length;
+      if (target <= 0) continue;
+      let deviationSum = 0;
+      for (const t of teams) {
+        const count = t.playerIds.reduce((acc, id) => {
+          const v = playersById[id]?.criteria[key];
+          return v?.type === "category" && v.value === value ? acc + 1 : acc;
+        }, 0);
+        deviationSum += Math.abs(count - target) / target;
+      }
+      const avgDeviation = deviationSum / teams.length;
+      const score = clamp(100 * (1 - avgDeviation), 0, 100);
+      scoreSum += score;
+      scoreCount += 1;
+    }
+
+    const score = scoreCount > 0 ? scoreSum / scoreCount : 0;
+    categoryScores.push({ key, score, missingCount, totalPlayers });
+  }
+
+  const overallFairness = (() => {
+    const parts: Array<{ key: string; score: number }> = [];
+    if (fairness.kind === "number") parts.push({ key: fairness.key, score: fairness.fairness });
+    for (const c of categoryScores) parts.push({ key: c.key, score: c.score });
+    if (parts.length === 0) return null;
+    let totalWeight = 0;
+    let weightedSum = 0;
+    for (const p of parts) {
+      const idx = settings.criteriaOrder.indexOf(p.key);
+      const w = idx >= 0 ? 1 / (idx + 1) ** 2 : 0.2;
+      totalWeight += w;
+      weightedSum += w * p.score;
+    }
+    return weightedSum / totalWeight;
+  })();
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -169,10 +249,14 @@ export default function TeamsPage({
           <h2 className="text-lg font-semibold">Teams</h2>
           <p className="text-sm text-slate-400">
             {teams.length} teams · criteria enabled:{" "}
-            {settings.criteriaOrder.length ? settings.criteriaOrder.join(", ") : "none"}
+            {settings.criteriaOrder.length
+              ? settings.criteriaOrder
+                  .map((id) => criteriaDefs.find((c) => c.id === id)?.name ?? id)
+                  .join(", ")
+              : "none"}
           </p>
 
-          {fairness.kind === "number" && (
+          {overallFairness != null && (
             <div className="mt-2">
               <button
                 type="button"
@@ -180,49 +264,76 @@ export default function TeamsPage({
                 className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800"
                 aria-expanded={fairnessOpen}
               >
-                <span>Fairness: {Math.round(fairness.fairness)}/100</span>
+                <span>Fairness: {Math.round(overallFairness)}/100</span>
                 <span className="text-slate-400">{fairnessOpen ? "▲" : "▼"}</span>
               </button>
 
               {fairnessOpen && (
                 <div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
-                  <div>
-                    <span className="font-semibold text-slate-100">Based on:</span>{" "}
-                    {fairness.key}
-                  </div>
-                  {epsilonInfo && epsilonInfo.key === fairness.key && (
-                    <div>
-                      <span className="font-semibold text-slate-100">Epsilon:</span>{" "}
-                      {epsilonInfo.epsilon.toFixed(2)}{" "}
-                      <span className="text-slate-400">
-                        (norm {epsilonInfo.epsNorm.toFixed(3)} · range{" "}
-                        {epsilonInfo.range.toFixed(1)})
-                      </span>
-                    </div>
+                  {fairness.kind === "number" && (
+                    <>
+                      <div>
+                        <span className="font-semibold text-slate-100">Numeric:</span>{" "}
+                        {labelFor(fairness.key)} · {Math.round(fairness.fairness)}/100
+                      </div>
+                      {epsilonInfo && epsilonInfo.key === fairness.key && (
+                        <div>
+                          <span className="font-semibold text-slate-100">Epsilon:</span>{" "}
+                          {epsilonInfo.epsilon.toFixed(2)}{" "}
+                          <span className="text-slate-400">
+                            (norm {epsilonInfo.epsNorm.toFixed(3)} · range{" "}
+                            {epsilonInfo.range.toFixed(1)})
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="font-semibold text-slate-100">Spread:</span>{" "}
+                        {fairness.spread.toFixed(0)}{" "}
+                        <span className="text-slate-400">
+                          ({(fairness.gapPct * 100).toFixed(1)}%)
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-100">
+                          Min/Max team sum:
+                        </span>{" "}
+                        {fairness.minSum.toFixed(0)} / {fairness.maxSum.toFixed(0)}
+                      </div>
+                      {fairness.missingCount > 0 && (
+                        <div className="mt-2 rounded-xl border border-amber-900/40 bg-amber-950/30 p-2 text-amber-200">
+                          Missing {labelFor(fairness.key)} for {fairness.missingCount}/
+                          {fairness.totalPlayers} players — using default{" "}
+                          {fairness.fallbackValue}.
+                        </div>
+                      )}
+                    </>
                   )}
-                  <div>
-                    <span className="font-semibold text-slate-100">Spread:</span>{" "}
-                    {fairness.spread.toFixed(0)}{" "}
-                    <span className="text-slate-400">
-                      ({(fairness.gapPct * 100).toFixed(1)}%)
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-slate-100">
-                      Min/Max team sum:
-                    </span>{" "}
-                    {fairness.minSum.toFixed(0)} / {fairness.maxSum.toFixed(0)}
-                  </div>
 
-                  {fairness.missingCount > 0 && (
-                    <div className="mt-2 rounded-xl border border-amber-900/40 bg-amber-950/30 p-2 text-amber-200">
-                      Missing {fairness.key} for {fairness.missingCount}/
-                      {fairness.totalPlayers} players — using default{" "}
-                      {fairness.fallbackValue}.
+                  {categoryScores.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {categoryScores.map((c) => (
+                        <div key={c.key}>
+                          <span className="font-semibold text-slate-100">Category:</span>{" "}
+                          {labelFor(c.key)} · {Math.round(c.score)}/100
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {missingSummary && missingSummary.rows.length > 0 && (
+            <div className="mt-3 rounded-2xl border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+              <div className="font-semibold text-amber-100">Missing data</div>
+              <div className="mt-1 space-y-1">
+                {missingSummary.rows.map((r) => (
+                  <div key={r.id}>
+                    {r.name}: {r.missing}/{missingSummary.totalPlayers}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -268,7 +379,7 @@ export default function TeamsPage({
                   <div>{players.length} players</div>
                   {numericKey && (
                     <div>
-                      {numericKey} sum: {numSum.toFixed(0)}
+                      {labelFor(numericKey)} sum: {numSum.toFixed(0)}
                       {numAvg != null ? ` · avg: ${numAvg.toFixed(1)}` : ""}
                     </div>
                   )}
@@ -276,26 +387,52 @@ export default function TeamsPage({
               </div>
 
               <ul className="mt-3 space-y-2">
-                {players.map((p) => (
-                  <li
-                    key={p.id}
-                    className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
-                  >
-                    <div className="text-sm font-semibold text-slate-100">
-                      {p.name}
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {settings.criteriaOrder.length === 0
-                        ? "—"
-                        : settings.criteriaOrder
-                            .map((key) => {
-                              const v = readCriterion(p, key);
-                              return `${key}:${v ?? "—"}`;
-                            })
-                            .join(" · ")}
-                    </div>
-                  </li>
-                ))}
+                {players.map((p) => {
+                  const missingKeys = settings.criteriaOrder.filter(
+                    (key) => !p.criteria[key]
+                  );
+                  const hasMissing = missingKeys.length > 0;
+                  return (
+                    <li
+                      key={p.id}
+                      className={[
+                        "rounded-xl border px-3 py-2",
+                        hasMissing
+                          ? "border-amber-900/50 bg-amber-950/20"
+                          : "border-slate-800 bg-slate-950",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-slate-100">
+                          {p.name}
+                        </div>
+                        {hasMissing && (
+                          <span className="rounded-full border border-amber-900/60 bg-amber-950/30 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                            Missing {missingKeys.length}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {settings.criteriaOrder.length === 0
+                          ? "—"
+                          : settings.criteriaOrder
+                              .map((key) => {
+                                const v = readCriterion(p, key);
+                                const label = labelFor(key);
+                                const value = v ?? "—";
+                                return `${label}:${value}`;
+                              })
+                              .join(" · ")}
+                      </div>
+                      {hasMissing && (
+                        <div className="mt-1 text-[11px] text-amber-200/80">
+                          Missing:{" "}
+                          {missingKeys.map((key) => labelFor(key)).join(", ")}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
 
               <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-400 sm:grid-cols-2">
@@ -304,7 +441,7 @@ export default function TeamsPage({
                     key={key}
                     className="rounded-xl border border-slate-800 bg-slate-950 p-2"
                   >
-                    <div className="font-semibold text-slate-200">{key}</div>
+                    <div className="font-semibold text-slate-200">{labelFor(key)}</div>
 
                     {summary.kind === "empty" && <div className="mt-1">—</div>}
 
