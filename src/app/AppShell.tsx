@@ -15,6 +15,14 @@ import { ensureDefaultCriteria } from "../storage/criteriaHelpers";
 
 type TabKey = "players" | "setup" | "teams" | "library" | "playerSets" | "criteria";
 
+type EpsilonInfo = {
+  key: string;
+  epsilon: number;
+  epsNorm: number;
+  stdevN: number;
+  range: number;
+};
+
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "players", label: "Players" },
   { key: "setup", label: "Setup" },
@@ -28,10 +36,12 @@ export default function AppShell() {
     playerSetId: DEFAULT_PLAYERSET_ID,
     numTeams: 2,
     criteriaOrder: [],
-    epsilon: 5,
   });
 
   const [lastGenerated, setLastGenerated] = useState<GeneratedTeams | null>(
+    null
+  );
+  const [lastEpsilonInfo, setLastEpsilonInfo] = useState<EpsilonInfo | null>(
     null
   );
 
@@ -77,14 +87,46 @@ export default function AppShell() {
         players.some((p) => p.criteria[key]?.type === "number")
       ) ?? null;
 
+    function computeEpsilonRawForKey(key: string): EpsilonInfo | null {
+      const values: number[] = [];
+      for (const p of players) {
+        const v = p.criteria[key];
+        if (v?.type === "number") values.push(v.value);
+      }
+      if (values.length < 2) return null;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = max - min;
+      if (range <= 0) return null;
+
+      const normalized = values.map((v) => (v - min) / range);
+      const mean = normalized.reduce((a, b) => a + b, 0) / normalized.length;
+      const variance =
+        normalized.reduce((a, b) => a + (b - mean) ** 2, 0) /
+        normalized.length;
+      const stdev = Math.sqrt(variance);
+      const epsNorm = Math.max(0.08, stdev);
+      const epsRaw = epsNorm * range;
+
+      return {
+        key,
+        epsilon: epsRaw,
+        epsNorm,
+        stdevN: stdev,
+        range,
+      };
+    }
+
+    const epsInfo = numericKey ? computeEpsilonRawForKey(numericKey) : null;
     const result = numericKey
       ? generateTeamsV1_numberGreedy(players, numTeams, numericKey, {
           fallbackValue: 60,
-          epsilon: s.epsilon ?? 0,
+          epsilon: epsInfo?.epsilon ?? 0,
         })
       : generateTeamsV0(players, numTeams);
 
     setLastGenerated(result);
+    setLastEpsilonInfo(epsInfo);
 
     setTab("teams");
   }
@@ -128,6 +170,7 @@ export default function AppShell() {
             <TeamsPage
               settings={settings}
               lastGenerated={lastGenerated}
+              epsilonInfo={lastEpsilonInfo}
               onReroll={() => generateAndGoToTeams()}
               onGoToSetup={() => setTab("setup")}
             />

@@ -90,6 +90,23 @@ export default function PlayersPage() {
     return map;
   }, [criteriaDefs, playersInSet]);
 
+  const rangeByCriterionId = useMemo(() => {
+    const map: Record<string, { min: number; max: number } | null> = {};
+    for (const def of criteriaDefs) {
+      if (def.type !== "number") continue;
+      let min: number | null = null;
+      let max: number | null = null;
+      for (const p of playersInSet) {
+        const v = p.criteria[def.id];
+        if (v?.type !== "number") continue;
+        min = min == null ? v.value : Math.min(min, v.value);
+        max = max == null ? v.value : Math.max(max, v.value);
+      }
+      map[def.id] = min == null || max == null ? null : { min, max };
+    }
+    return map;
+  }, [criteriaDefs, playersInSet]);
+
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     for (const def of criteriaDefs) {
@@ -384,6 +401,7 @@ export default function PlayersPage() {
         onOpenChange={setFiltersOpen}
         criteriaDefs={criteriaDefs}
         optionsByCriterionId={optionsByCriterionId}
+        rangeByCriterionId={rangeByCriterionId}
         filters={filters}
         onChangeFilter={(id, next) =>
           setFilters((prev) => ({ ...prev, [id]: next }))

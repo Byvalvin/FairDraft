@@ -10,6 +10,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   criteriaDefs: CriterionDef[];
   optionsByCriterionId: Record<string, string[]>;
+  rangeByCriterionId: Record<string, { min: number; max: number } | null>;
   filters: CriteriaFilters;
   onChangeFilter: (id: string, next: NumberFilter | CategoryFilter) => void;
   onClearAll: () => void;
@@ -20,6 +21,7 @@ export default function PlayersFilterSheet({
   onOpenChange,
   criteriaDefs,
   optionsByCriterionId,
+  rangeByCriterionId,
   filters,
   onChangeFilter,
   onClearAll,
@@ -42,12 +44,28 @@ export default function PlayersFilterSheet({
             {criteriaDefs.map((c) => {
               if (c.type === "number") {
                 const f = filters[c.id] as NumberFilter | undefined;
+                const range = rangeByCriterionId[c.id];
                 return (
                   <div
                     key={c.id}
                     className="rounded-2xl border border-slate-800 bg-slate-900 p-3"
                   >
                     <div className="text-sm font-semibold text-slate-100">{c.name}</div>
+                    {range && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onChangeFilter(c.id, {
+                            type: "number",
+                            min: range.min.toFixed(1),
+                            max: range.max.toFixed(1),
+                          })
+                        }
+                        className="mt-1 inline-flex items-center rounded-full border border-slate-800 bg-slate-950 px-2 py-0.5 text-[10px] font-semibold text-slate-300 hover:bg-slate-900"
+                      >
+                        Range: {range.min.toFixed(1)} – {range.max.toFixed(1)} · Autofill
+                      </button>
+                    )}
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <input
                         inputMode="numeric"

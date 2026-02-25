@@ -6,6 +6,13 @@ import type { GeneratedTeams } from "../lib/logic/generateTeams";
 type Props = {
   settings: GenerationSettings;
   lastGenerated: GeneratedTeams | null;
+  epsilonInfo?: {
+    key: string;
+    epsilon: number;
+    epsNorm: number;
+    stdevN: number;
+    range: number;
+  } | null;
   onReroll: () => Promise<void>;
   onGoToSetup: () => void;
 };
@@ -64,6 +71,7 @@ type FairnessDetails =
 export default function TeamsPage({
   settings,
   lastGenerated,
+  epsilonInfo,
   onReroll,
   onGoToSetup,
 }: Props) {
@@ -182,6 +190,16 @@ export default function TeamsPage({
                     <span className="font-semibold text-slate-100">Based on:</span>{" "}
                     {fairness.key}
                   </div>
+                  {epsilonInfo && epsilonInfo.key === fairness.key && (
+                    <div>
+                      <span className="font-semibold text-slate-100">Epsilon:</span>{" "}
+                      {epsilonInfo.epsilon.toFixed(2)}{" "}
+                      <span className="text-slate-400">
+                        (norm {epsilonInfo.epsNorm.toFixed(3)} · range{" "}
+                        {epsilonInfo.range.toFixed(1)})
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <span className="font-semibold text-slate-100">Spread:</span>{" "}
                     {fairness.spread.toFixed(0)}{" "}
