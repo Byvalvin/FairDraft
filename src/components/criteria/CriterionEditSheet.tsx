@@ -62,6 +62,7 @@ export default function CriterionEditSheet({
     setSaving(true);
     try {
       await onSave(criterion.id, updates);
+      onOpenChange(false);
     } finally {
       setSaving(false);
     }

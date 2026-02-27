@@ -67,6 +67,14 @@ export default function AppShell() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (tab !== "teams") return;
+    void (async () => {
+      const rows = await DB.criteria.orderBy("createdAt").toArray();
+      setCriteriaDefs(rows);
+    })();
+  }, [tab]);
+
   const title = useMemo(() => {
     switch (tab) {
       case "players":
@@ -98,13 +106,14 @@ export default function AppShell() {
     // const result = generateTeamsV0(players, Math.max(2, s.numTeams));
     const numTeams = Math.max(2, s.numTeams);
     // pick first enabled numeric criterion (for now: any key that exists as number on at least one player)
-    const criteriaDefs = await DB.criteria.toArray();
-    const enabledDefs = criteriaDefs.filter((d) =>
+    const criteriaRows = await DB.criteria.toArray();
+    setCriteriaDefs(criteriaRows);
+    const enabledDefs = criteriaRows.filter((d) =>
       s.criteriaOrder.includes(d.id)
     );
     const numericKey =
       s.criteriaOrder.find((key) =>
-        criteriaDefs.some((d) => d.id === key && d.type === "number") &&
+        criteriaRows.some((d) => d.id === key && d.type === "number") &&
         players.some((p) => p.criteria[key]?.type === "number")
       ) ?? null;
     const hasCategory = enabledDefs.some((d) => d.type === "category");
@@ -127,7 +136,7 @@ export default function AppShell() {
         normalized.reduce((a, b) => a + (b - mean) ** 2, 0) /
         normalized.length;
       const stdev = Math.sqrt(variance);
-      const epsNorm = Math.max(0.08, stdev);
+      const epsNorm = Math.max(0.08, stdev/4);
       const epsRaw = epsNorm * range;
 
       return {
@@ -143,7 +152,7 @@ export default function AppShell() {
     const useMulti =
       s.criteriaOrder.length >= 2 || hasCategory;
     const result = useMulti
-      ? generateTeamsV2_multiCriteria(players, numTeams, s.criteriaOrder, criteriaDefs)
+      ? generateTeamsV2_multiCriteria(players, numTeams, s.criteriaOrder, criteriaRows)
       : numericKey
       ? generateTeamsV1_numberGreedy(players, numTeams, numericKey, {
           fallbackValue: 60,
