@@ -8,6 +8,7 @@ import {
   togglePlayerInSet,
 } from "../storage/playerSetHelpers";
 import PlayerSetEditSheet from "../components/playerset/PlayerSetEditSheet";
+import { getCache, setCache } from "../lib/cache";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -19,8 +20,11 @@ export default function PlayerSetsPage({ onGoToPlayers }: Props) {
   const [status, setStatus] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const [sets, setSets] = useState<PlayerSet[]>([]);
-  const [players, setPlayers] = useState<Player[]>([]);
+  const cached = getCache<{ sets: PlayerSet[]; players: Player[] }>(
+    "playersets_page"
+  );
+  const [sets, setSets] = useState<PlayerSet[]>(cached?.sets ?? []);
+  const [players, setPlayers] = useState<Player[]>(cached?.players ?? []);
   const [name, setName] = useState("");
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -30,7 +34,7 @@ export default function PlayerSetsPage({ onGoToPlayers }: Props) {
 
   async function refreshAll(options?: { silent?: boolean }) {
     const silent = options?.silent ?? false;
-    if (!silent) {
+    if (!silent && sets.length === 0 && players.length === 0) {
       setStatus("loading");
       setError(null);
     }
@@ -42,6 +46,7 @@ export default function PlayerSetsPage({ onGoToPlayers }: Props) {
       ]);
       setSets(setRows);
       setPlayers(playerRows);
+      setCache("playersets_page", { sets: setRows, players: playerRows });
       if (!silent) setStatus("ready");
     } catch (e) {
       setStatus("error");

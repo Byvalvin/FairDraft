@@ -18,6 +18,7 @@ type Props = {
     stdevN: number;
     range: number;
   } | null;
+  onSaveResult: () => Promise<void>;
   onReroll: () => Promise<void>;
   onGoToSetup: () => void;
 };
@@ -86,11 +87,14 @@ export default function TeamsPage({
   criteriaDefs,
   missingSummary,
   epsilonInfo,
+  onSaveResult,
   onReroll,
   onGoToSetup,
 }: Props) {
   // ✅ Hooks must be inside component
   const [fairnessOpen, setFairnessOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!lastGenerated) {
     return (
@@ -346,6 +350,33 @@ export default function TeamsPage({
           Re-roll
         </button>
       </div>
+
+      <button
+        type="button"
+        onClick={async () => {
+          setSaveError(null);
+          setSaveStatus("Saving…");
+          try {
+            await onSaveResult();
+            setSaveStatus("Saved.");
+            setTimeout(() => setSaveStatus(null), 1500);
+          } catch (e) {
+            setSaveStatus(null);
+            setSaveError(e instanceof Error ? e.message : "Failed to save");
+          }
+        }}
+        className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-slate-800"
+      >
+        Save result
+      </button>
+      {saveStatus && (
+        <div className="text-xs text-slate-400">{saveStatus}</div>
+      )}
+      {saveError && (
+        <div className="rounded-xl border border-red-900/40 bg-red-950/30 p-2 text-xs text-red-200">
+          {saveError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {teams.map((t) => {

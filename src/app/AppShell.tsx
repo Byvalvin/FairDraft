@@ -5,9 +5,11 @@ import TeamsPage from "../pages/TeamsPage";
 import LibraryPage from "../pages/LibraryPage";
 import PlayerSetsPage from "../pages/PlayerSetsPage";
 import CriteriaPage from "../pages/CriteriaPage";
+import PresetsPage from "../pages/PresetsPage";
+import ResultsPage from "../pages/ResultsPage";
 
 import type { GenerationSettings } from "../types/gen";
-import type { CriterionDef, Player } from "../types/domain";
+import type { CriterionDef, GeneratedResult, Player, Preset } from "../types/domain";
 import { DEFAULT_PLAYERSET_ID } from "../storage/playerSetHelpers";
 import { DB } from "../storage/DB";
 import {
@@ -17,8 +19,19 @@ import {
   type GeneratedTeams,
 } from "../lib/logic/generateTeams";
 import { ensureDefaultCriteria } from "../storage/criteriaHelpers";
+import { createPreset } from "../storage/presetHelpers";
+import { saveResult as saveResultToDB } from "../storage/resultHelpers";
+import { newId } from "../storage/utils";
 
-type TabKey = "players" | "setup" | "teams" | "library" | "playerSets" | "criteria";
+type TabKey =
+  | "players"
+  | "setup"
+  | "teams"
+  | "library"
+  | "playerSets"
+  | "criteria"
+  | "presets"
+  | "results";
 
 type EpsilonInfo = {
   key: string;
@@ -89,6 +102,10 @@ export default function AppShell() {
         return "Player Sets";
       case "criteria":
         return "Criteria";
+      case "presets":
+        return "Presets";
+      case "results":
+        return "Saved Results";
     }
   }, [tab]);
 
@@ -193,11 +210,23 @@ export default function AppShell() {
             <button
               type="button"
               onClick={() =>
-                setTab(tab === "playerSets" || tab === "criteria" ? "library" : "library")
+                setTab(
+                  tab === "playerSets" ||
+                    tab === "criteria" ||
+                    tab === "presets" ||
+                    tab === "results"
+                    ? "library"
+                    : "library"
+                )
               }
               className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800"
             >
-              {tab === "playerSets" || tab === "criteria" ? "Back" : "Library"}
+              {tab === "playerSets" ||
+              tab === "criteria" ||
+              tab === "presets" ||
+              tab === "results"
+                ? "Back"
+                : "Library"}
             </button>
           </div>
         </header>
@@ -210,6 +239,9 @@ export default function AppShell() {
               settings={settings}
               onChangeSettings={setSettings}
               onGenerate={generateAndGoToTeams}
+              onSavePreset={async (name, nextSettings) => {
+                await createPreset(name, nextSettings);
+              }}
             />
           )}
 
@@ -220,6 +252,45 @@ export default function AppShell() {
               epsilonInfo={lastEpsilonInfo}
               criteriaDefs={criteriaDefs}
               missingSummary={lastMissingSummary}
+              onSaveResult={async () => {
+                if (!lastGenerated) return;
+                const set = await DB.playerSets.get(settings.playerSetId);
+                const ids = set?.playerIds ?? [];
+                const players: Player[] = ids.length
+                  ? await DB.players.bulkGet(ids).then((arr) => arr.filter(Boolean) as Player[])
+                  : [];
+
+                const presetSnapshot: Preset = {
+                  id: newId("preset_snapshot"),
+                  name: "Ad hoc",
+                  playerSetId: settings.playerSetId,
+                  numTeams: settings.numTeams,
+                  criteriaOrder: settings.criteriaOrder,
+                  missingHandling: {},
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                };
+
+                const result: GeneratedResult = {
+                  id: newId("result"),
+                  createdAt: Date.now(),
+                  seed: String(Date.now()),
+                  presetSnapshot,
+                  playerSetSnapshot: set ?? {
+                    id: settings.playerSetId,
+                    name: "Unknown",
+                    playerIds: ids,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  },
+                  playersSnapshot: players,
+                  teams: lastGenerated.teams,
+                  fairness: { score: 0, breakdown: {}, notes: [] },
+                  isSaved: true,
+                };
+
+                await saveResultToDB(result);
+              }}
               onReroll={() => generateAndGoToTeams()}
               onGoToSetup={() => setTab("setup")}
             />
@@ -229,6 +300,8 @@ export default function AppShell() {
             <LibraryPage
               onOpenPlayerSets={() => setTab("playerSets")}
               onOpenCriteria={() => setTab("criteria")}
+              onOpenPresets={() => setTab("presets")}
+              onOpenResults={() => setTab("results")}
             />
           )}
 
@@ -237,6 +310,25 @@ export default function AppShell() {
           )}
 
           {tab === "criteria" && <CriteriaPage />}
+
+          {tab === "presets" && (
+            <PresetsPage
+              criteriaDefs={criteriaDefs}
+              onApplyPreset={(preset) => {
+                const filtered = preset.criteriaOrder.filter((id) =>
+                  criteriaDefs.some((c) => c.id === id)
+                );
+                setSettings({
+                  playerSetId: preset.playerSetId,
+                  numTeams: preset.numTeams,
+                  criteriaOrder: filtered,
+                });
+                setTab("setup");
+              }}
+            />
+          )}
+
+          {tab === "results" && <ResultsPage criteriaDefs={criteriaDefs} />}
         </main>
 
         <nav className="sticky bottom-0 border-t border-slate-800 bg-slate-950/80 backdrop-blur pb-[env(safe-area-inset-bottom)]">

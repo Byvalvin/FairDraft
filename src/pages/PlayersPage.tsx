@@ -15,6 +15,7 @@ import PlayersFilterSheet, {
   type CriteriaFilters,
   type NumberFilter,
 } from "../components/player/PlayersFilterSheet";
+import { getCache, setCache } from "../lib/cache";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -22,9 +23,16 @@ export default function PlayersPage() {
   const [status, setStatus] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [sets, setSets] = useState<PlayerSet[]>([]);
-  const [criteriaDefs, setCriteriaDefs] = useState<CriterionDef[]>([]);
+  const cached = getCache<{
+    players: Player[];
+    sets: PlayerSet[];
+    criteriaDefs: CriterionDef[];
+  }>("players_page");
+  const [players, setPlayers] = useState<Player[]>(cached?.players ?? []);
+  const [sets, setSets] = useState<PlayerSet[]>(cached?.sets ?? []);
+  const [criteriaDefs, setCriteriaDefs] = useState<CriterionDef[]>(
+    cached?.criteriaDefs ?? []
+  );
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
   const [setFilterId, setSetFilterId] = useState<string>("all");
@@ -135,7 +143,7 @@ export default function PlayersPage() {
 
   async function refreshPlayers(options?: { silent?: boolean }) {
     const silent = options?.silent ?? false;
-    if (!silent) {
+    if (!silent && players.length === 0) {
         setStatus("loading");
         setError(null);
     }
@@ -149,6 +157,11 @@ export default function PlayersPage() {
       setPlayers(playerRows);
       setSets(setRows);
       setCriteriaDefs(criteriaRows);
+      setCache("players_page", {
+        players: playerRows,
+        sets: setRows,
+        criteriaDefs: criteriaRows,
+      });
       if (!silent) setStatus("ready");
     } catch (e) {
       setStatus("error");

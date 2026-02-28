@@ -9,6 +9,7 @@ import {
   deleteCriterion,
 } from "../storage/criteriaHelpers";
 import CriterionEditSheet from "../components/criteria/CriterionEditSheet";
+import { getCache, setCache } from "../lib/cache";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -16,7 +17,10 @@ export default function CriteriaPage() {
   const [status, setStatus] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const [criteria, setCriteria] = useState<CriterionDef[]>([]);
+  const cached = getCache<{ criteria: CriterionDef[] }>("criteria_page");
+  const [criteria, setCriteria] = useState<CriterionDef[]>(
+    cached?.criteria ?? []
+  );
   const [name, setName] = useState("");
   const [type, setType] = useState<"number" | "category">("number");
   const [options, setOptions] = useState("");
@@ -39,7 +43,7 @@ export default function CriteriaPage() {
 
   async function refreshCriteria(options?: { silent?: boolean }) {
     const silent = options?.silent ?? false;
-    if (!silent) {
+    if (!silent && criteria.length === 0) {
       setStatus("loading");
       setError(null);
     }
@@ -47,6 +51,7 @@ export default function CriteriaPage() {
     try {
       const rows = await DB.criteria.orderBy("createdAt").toArray();
       setCriteria(rows);
+      setCache("criteria_page", { criteria: rows });
       if (!silent) setStatus("ready");
     } catch (e) {
       setStatus("error");
