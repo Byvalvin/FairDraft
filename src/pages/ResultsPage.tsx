@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { GeneratedResult, PlayerSet } from "../types/domain";
+import type { 
+  GeneratedResult, 
+  // PlayerSet 
+} from "../types/domain";
 import { DB } from "../storage/DB";
 import ResultDetailSheet from "../components/results/ResultDetailSheet";
 import { getCache, setCache } from "../lib/cache";

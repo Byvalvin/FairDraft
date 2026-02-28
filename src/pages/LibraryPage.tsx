@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DB } from "../storage/DB";
+import type { CriterionDef, Player, PlayerSet, Preset, GeneratedResult } from "../types/domain";
 import BottomSheet from "../components/BottomSheet";
 
 type Props = {
@@ -19,6 +20,7 @@ export default function LibraryPage({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [replaceAll, setReplaceAll] = useState(false);
+  const [confirmMode, setConfirmMode] = useState<"import" | "sample">("import");
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [lastBackupAt, setLastBackupAt] = useState<number | null>(null);
@@ -41,7 +43,13 @@ export default function LibraryPage({
     setBackupError(null);
     setBackupStatus("Preparing export…");
     try {
-      const [players, playerSets, criteria, presets, results] = await Promise.all([
+      const [
+        players,
+        playerSets,
+        criteria,
+        presets,
+        results,
+      ] = await Promise.all([
         DB.players.toArray(),
         DB.playerSets.toArray(),
         DB.criteria.toArray(),
@@ -85,41 +93,40 @@ export default function LibraryPage({
       const json = JSON.parse(text) as {
         version?: number;
         data?: {
-          players?: unknown[];
-          playerSets?: unknown[];
-          criteria?: unknown[];
-          presets?: unknown[];
-          results?: unknown[];
+          players?: Player[];
+          playerSets?: PlayerSet[];
+          criteria?: CriterionDef[];
+          presets?: Preset[];
+          results?: GeneratedResult[];
         };
       };
 
       const data = json.data ?? {};
-      await DB.transaction("rw", DB.players, DB.playerSets, DB.criteria, DB.presets, DB.results, async () => {
+      await DB.transaction("rw", DB.players, DB.playerSets, DB.criteria, DB.presets, async () => {
         if (mode === "replace") {
           await DB.players.clear();
           await DB.playerSets.clear();
           await DB.criteria.clear();
           await DB.presets.clear();
-          await DB.results.clear();
         }
         if (Array.isArray(data.players) && data.players.length > 0) {
-          // @ts-expect-error trusted import
           await DB.players.bulkPut(data.players);
         }
         if (Array.isArray(data.playerSets) && data.playerSets.length > 0) {
-          // @ts-expect-error trusted import
           await DB.playerSets.bulkPut(data.playerSets);
         }
         if (Array.isArray(data.criteria) && data.criteria.length > 0) {
-          // @ts-expect-error trusted import
           await DB.criteria.bulkPut(data.criteria);
         }
         if (Array.isArray(data.presets) && data.presets.length > 0) {
-          // @ts-expect-error trusted import
           await DB.presets.bulkPut(data.presets);
         }
+      });
+      await DB.transaction("rw", DB.results, async () => {
+        if (mode === "replace") {
+          await DB.results.clear();
+        }
         if (Array.isArray(data.results) && data.results.length > 0) {
-          // @ts-expect-error trusted import
           await DB.results.bulkPut(data.results);
         }
       });
@@ -137,23 +144,75 @@ export default function LibraryPage({
 
   function buildSampleBackup() {
     const now = Date.now();
-    const players = [
-      { id: "player_demo_1", name: "Alex", criteria: { rating: { type: "number", value: 78 }, position: { type: "category", value: "Midfield" }, gender: { type: "category", value: "male" } }, createdAt: now, updatedAt: now },
-      { id: "player_demo_2", name: "Jordan", criteria: { rating: { type: "number", value: 72 }, position: { type: "category", value: "Defense" }, gender: { type: "category", value: "female" } }, createdAt: now, updatedAt: now },
-      { id: "player_demo_3", name: "Casey", criteria: { rating: { type: "number", value: 81 }, position: { type: "category", value: "Forward" }, gender: { type: "category", value: "male" } }, createdAt: now, updatedAt: now },
-      { id: "player_demo_4", name: "Riley", criteria: { rating: { type: "number", value: 68 }, position: { type: "category", value: "Goalkeeper" }, gender: { type: "category", value: "female" } }, createdAt: now, updatedAt: now },
+    const players: Player[] = [
+      {
+        id: "player_demo_1",
+        name: "Alex",
+        criteria: {
+          rating: { type: "number", value: 78 },
+          position: { type: "category", value: "Midfield" },
+          gender: { type: "category", value: "male" },
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "player_demo_2",
+        name: "Jordan",
+        criteria: {
+          rating: { type: "number", value: 72 },
+          position: { type: "category", value: "Defense" },
+          gender: { type: "category", value: "female" },
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "player_demo_3",
+        name: "Casey",
+        criteria: {
+          rating: { type: "number", value: 81 },
+          position: { type: "category", value: "Forward" },
+          gender: { type: "category", value: "male" },
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "player_demo_4",
+        name: "Riley",
+        criteria: {
+          rating: { type: "number", value: 68 },
+          position: { type: "category", value: "Goalkeeper" },
+          gender: { type: "category", value: "female" },
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
     ];
-    const playerSets = [
-      { id: "playerset_default", name: "Default", playerIds: players.map((p) => p.id), createdAt: now, updatedAt: now },
-      { id: "playerset_demo", name: "Demo Set", playerIds: players.map((p) => p.id), createdAt: now, updatedAt: now },
+    const playerSets: PlayerSet[] = [
+      {
+        id: "playerset_default",
+        name: "Default",
+        playerIds: players.map((p) => p.id),
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "playerset_demo",
+        name: "Demo Set",
+        playerIds: players.map((p) => p.id),
+        createdAt: now,
+        updatedAt: now,
+      },
     ];
-    const criteria = [
+    const criteria: CriterionDef[] = [
       { id: "rating", name: "Rating", type: "number", createdAt: now, updatedAt: now },
       { id: "position", name: "Position", type: "category", options: ["Goalkeeper", "Defense", "Midfield", "Forward"], createdAt: now, updatedAt: now },
       { id: "gender", name: "Gender", type: "category", options: ["male", "female"], createdAt: now, updatedAt: now },
     ];
-    const presets = [];
-    const results = [];
+    const presets: Preset[] = [];
+    const results: GeneratedResult[] = [];
     return {
       version: 1,
       exportedAt: now,
@@ -161,17 +220,32 @@ export default function LibraryPage({
     };
   }
 
-  function handleDownloadSample() {
+  async function handleLoadSample() {
     const sample = buildSampleBackup();
-    const blob = new Blob([JSON.stringify(sample, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "fairdraft-sample-backup.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    setBackupError(null);
+    setBackupStatus("Loading sample…");
+    try {
+      const data = sample.data ?? {};
+      await DB.transaction("rw", DB.players, DB.playerSets, DB.criteria, DB.presets, async () => {
+        await DB.players.clear();
+        await DB.playerSets.clear();
+        await DB.criteria.clear();
+        await DB.presets.clear();
+        await DB.players.bulkPut(data.players ?? []);
+        await DB.playerSets.bulkPut(data.playerSets ?? []);
+        await DB.criteria.bulkPut(data.criteria ?? []);
+        await DB.presets.bulkPut(data.presets ?? []);
+      });
+      await DB.transaction("rw", DB.results, async () => {
+        await DB.results.clear();
+        await DB.results.bulkPut(data.results ?? []);
+      });
+      setBackupStatus("Sample data loaded.");
+      setTimeout(() => setBackupStatus(null), 1500);
+    } catch (e) {
+      setBackupStatus(null);
+      setBackupError(e instanceof Error ? e.message : "Failed to load sample");
+    }
   }
 
   return (
@@ -261,10 +335,13 @@ export default function LibraryPage({
           </button>
           <button
             type="button"
-            onClick={handleDownloadSample}
+            onClick={() => {
+              setConfirmMode("sample");
+              setConfirmOpen(true);
+            }}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
           >
-            Sample JSON
+            Load sample
           </button>
         </div>
         {backupStatus && (
@@ -284,6 +361,7 @@ export default function LibraryPage({
             const file = e.target.files?.[0];
             if (file) {
               setPendingFile(file);
+              setConfirmMode("import");
               setConfirmOpen(true);
             }
             e.currentTarget.value = "";
@@ -297,28 +375,36 @@ export default function LibraryPage({
         </div>
       </div>
 
-        <BottomSheet
-          open={confirmOpen}
-          onOpenChange={(open) => {
-            setConfirmOpen(open);
-            if (!open) setPendingFile(null);
-          }}
-          title="Import backup"
-        >
+      <BottomSheet
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) setPendingFile(null);
+        }}
+        title={confirmMode === "sample" ? "Load sample data" : "Import backup"}
+      >
         <div className="space-y-3 text-sm text-slate-300">
-          <div>
-            This will merge data from your backup into this device. Items with
-            the same IDs will be overwritten.
-          </div>
-          <label className="flex items-center gap-2 text-xs text-slate-300">
-            <input
-              type="checkbox"
-              checked={replaceAll}
-              onChange={(e) => setReplaceAll(e.target.checked)}
-              className="h-4 w-4 accent-slate-200"
-            />
-            Replace all existing data before import
-          </label>
+          {confirmMode === "sample" ? (
+            <div>
+              This will replace your current data with sample data. Continue?
+            </div>
+          ) : (
+            <>
+              <div>
+                This will merge data from your backup into this device. Items with
+                the same IDs will be overwritten.
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={replaceAll}
+                  onChange={(e) => setReplaceAll(e.target.checked)}
+                  className="h-4 w-4 accent-slate-200"
+                />
+                Replace all existing data before import
+              </label>
+            </>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
@@ -330,15 +416,18 @@ export default function LibraryPage({
             <button
               type="button"
               onClick={() => {
-                if (pendingFile)
+                if (confirmMode === "sample") {
+                  void handleLoadSample();
+                } else if (pendingFile) {
                   void handleImportFile(pendingFile, replaceAll ? "replace" : "merge");
+                }
                 setConfirmOpen(false);
                 setPendingFile(null);
                 setReplaceAll(false);
               }}
               className="w-full rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-white"
             >
-              Import
+              {confirmMode === "sample" ? "Load sample" : "Import"}
             </button>
           </div>
         </div>

@@ -284,6 +284,13 @@ export default function PlayersPage() {
         </div>
       </div>
 
+      {players.length === 0 && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">
+          Add the players you want to split into teams. A good start is 8–14
+          players.
+        </div>
+      )}
+
       {/* Status / errors */}
       {status === "loading" && (
         <div className="text-sm text-slate-400">Loading…</div>
