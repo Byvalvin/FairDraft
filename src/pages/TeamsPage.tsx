@@ -1,7 +1,11 @@
 import { useState } from "react";
 import type { GenerationSettings } from "../types/gen";
-import type { Player } from "../types/domain";
+import type { 
+  GeneratedResult, 
+  Player 
+} from "../types/domain";
 import type { GeneratedTeams } from "../lib/logic/generateTeams";
+import ResultDetailSheet from "../components/results/ResultDetailSheet";
 
 type Props = {
   settings: GenerationSettings;
@@ -18,6 +22,9 @@ type Props = {
     stdevN: number;
     range: number;
   } | null;
+  recentRolls: GeneratedTeams[];
+  onClearRecentRolls: () => void;
+  onSaveRoll: (result: GeneratedResult) => Promise<void>;
   onSaveResult: () => Promise<void>;
   onReroll: () => Promise<void>;
   onGoToSetup: () => void;
@@ -87,6 +94,9 @@ export default function TeamsPage({
   criteriaDefs,
   missingSummary,
   epsilonInfo,
+  recentRolls,
+  onClearRecentRolls,
+  onSaveRoll,
   onSaveResult,
   onReroll,
   onGoToSetup,
@@ -95,6 +105,47 @@ export default function TeamsPage({
   const [fairnessOpen, setFairnessOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [rollOpen, setRollOpen] = useState(false);
+  const [rollSelectedIdx, setRollSelectedIdx] = useState<number | null>(null);
+  const [savedRollKeys, setSavedRollKeys] = useState<Set<string>>(new Set());
+
+  function computeNumericFairnessScore(
+    roll: GeneratedTeams,
+    criteriaOrder: string[]
+  ): number {
+    const numericKey =
+      criteriaOrder.find((key) =>
+        roll.teams.some((t) =>
+          t.playerIds.some(
+            (id) => roll.playersById[id]?.criteria[key]?.type === "number"
+          )
+        )
+      ) ?? null;
+    if (!numericKey) return 0;
+    const sums = roll.teams.map((t) => {
+      let sum = 0;
+      for (const id of t.playerIds) {
+        const p = roll.playersById[id];
+        const v = p?.criteria[numericKey];
+        if (v?.type === "number") sum += v.value;
+        else sum += 60;
+      }
+      return sum;
+    });
+    const max = Math.max(...sums);
+    const min = Math.min(...sums);
+    const avg = sums.reduce((a, b) => a + b, 0) / sums.length;
+    const spread = max - min;
+    const gapPct = avg > 0 ? spread / avg : 0;
+    const targetGap = 0.25;
+    return Math.max(0, Math.min(100, 100 * (1 - gapPct / targetGap)));
+  }
+
+  function rollKeyFor(roll: GeneratedTeams): string {
+    return roll.teams
+      .map((t) => `${t.id}:${t.playerIds.slice().sort().join(",")}`)
+      .join("|");
+  }
 
   if (!lastGenerated) {
     return (
@@ -378,6 +429,69 @@ export default function TeamsPage({
         </div>
       )}
 
+      {recentRolls.length > 1 && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-100">Recent rolls</div>
+            <button
+              type="button"
+              onClick={onClearRecentRolls}
+              className="rounded-full border border-slate-800 bg-slate-950 px-2 py-1 text-[10px] font-semibold text-slate-300 hover:bg-slate-800"
+              aria-label="Clear recent rolls"
+            >
+              X
+            </button>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            Last {Math.min(3, recentRolls.length)} rolls this session
+          </div>
+          <ul className="mt-3 space-y-2">
+            {recentRolls.slice(0, 3).map((r, idx) => {
+              const rollScore = computeNumericFairnessScore(
+                r,
+                settings.criteriaOrder
+              );
+              const rollKey = rollKeyFor(r);
+              const isSaved = savedRollKeys.has(rollKey);
+              return (
+                <li
+                  key={idx}
+                  className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-100">
+                      Roll {recentRolls.length - idx}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {r.teams.length} teams ·{" "}
+                      {r.teams.reduce((a, t) => a + t.playerIds.length, 0)} players
+                    </div>
+                    {Number.isFinite(rollScore) && (
+                      <div className="text-[11px] text-slate-400">
+                        Fairness: {Math.round(rollScore)}/100
+                      </div>
+                    )}
+                    {isSaved && (
+                      <div className="text-[11px] text-slate-500">Saved</div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRollSelectedIdx(idx);
+                      setRollOpen(true);
+                    }}
+                    className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                  >
+                    View
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {teams.map((t) => {
           const players = t.playerIds.map((id) => playersById[id]).filter(Boolean);
@@ -496,6 +610,69 @@ export default function TeamsPage({
           );
         })}
       </div>
+
+      <ResultDetailSheet
+        open={rollOpen}
+        onOpenChange={setRollOpen}
+        result={
+          rollSelectedIdx == null
+            ? null
+            : {
+                id: `roll_${rollSelectedIdx}`,
+                createdAt: Date.now(),
+                seed: "session",
+                presetSnapshot: {
+                  id: "preset_roll",
+                  name: "Roll",
+                  playerSetId: settings.playerSetId,
+                  numTeams: settings.numTeams,
+                  criteriaOrder: settings.criteriaOrder,
+                  missingHandling: {},
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                },
+                playerSetSnapshot: {
+                  id: settings.playerSetId,
+                  name: "Current",
+                  playerIds: [],
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                },
+                playersSnapshot: Object.values(
+                  recentRolls[rollSelectedIdx].playersById
+                ),
+                teams: recentRolls[rollSelectedIdx].teams,
+                fairness: { score: 0, breakdown: {}, notes: [] },
+                isSaved: false,
+              }
+        }
+        onSave={
+          rollSelectedIdx == null
+            ? undefined
+            : savedRollKeys.has(rollKeyFor(recentRolls[rollSelectedIdx]))
+            ? undefined
+            : async (res) => {
+                const score = computeNumericFairnessScore(
+                  recentRolls[rollSelectedIdx],
+                  settings.criteriaOrder
+                );
+                const rollKey = rollKeyFor(recentRolls[rollSelectedIdx]);
+                await onSaveRoll({
+                  ...res,
+                  id: `result_${Date.now()}`,
+                  createdAt: Date.now(),
+                  fairness: { score, breakdown: {}, notes: [] },
+                  isSaved: true,
+                });
+                setSavedRollKeys((prev) => {
+                  const next = new Set(prev);
+                  next.add(rollKey);
+                  return next;
+                });
+              }
+        }
+      />
+
     </div>
   );
 }

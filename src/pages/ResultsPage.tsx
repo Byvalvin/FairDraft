@@ -103,6 +103,11 @@ export default function ResultsPage({ criteriaDefs }: Props) {
                         .join(", ")
                     : "none"}
                 </div>
+                {Number.isFinite(r.fairness?.score) && (
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    Fairness: {Math.round(r.fairness.score)}/100
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <button

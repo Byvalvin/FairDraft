@@ -67,6 +67,7 @@ export default function AppShell() {
   const [lastEpsilonInfo, setLastEpsilonInfo] = useState<EpsilonInfo | null>(
     null
   );
+  const [recentRolls, setRecentRolls] = useState<GeneratedTeams[]>([]);
   const [lastMissingSummary, setLastMissingSummary] = useState<MissingSummary | null>(
     null
   );
@@ -185,6 +186,11 @@ export default function AppShell() {
       }))
       .filter((r) => r.missing > 0);
 
+    setRecentRolls((prev) => {
+      if (!lastGenerated) return prev;
+      const next = [lastGenerated, ...prev];
+      return next.slice(0, 3);
+    });
     setLastGenerated(result);
     setLastEpsilonInfo(epsInfo);
     setLastMissingSummary({
@@ -252,6 +258,11 @@ export default function AppShell() {
               epsilonInfo={lastEpsilonInfo}
               criteriaDefs={criteriaDefs}
               missingSummary={lastMissingSummary}
+              recentRolls={recentRolls}
+              onClearRecentRolls={() => setRecentRolls([])}
+              onSaveRoll={async (result) => {
+                await saveResultToDB(result);
+              }}
               onSaveResult={async () => {
                 if (!lastGenerated) return;
                 const set = await DB.playerSets.get(settings.playerSetId);
@@ -259,6 +270,32 @@ export default function AppShell() {
                 const players: Player[] = ids.length
                   ? await DB.players.bulkGet(ids).then((arr) => arr.filter(Boolean) as Player[])
                   : [];
+
+                const numericKey =
+                  settings.criteriaOrder.find((key) =>
+                    players.some((p) => p.criteria[key]?.type === "number")
+                  ) ?? null;
+                const FALLBACK_VALUE = 60;
+                let fairnessScore = 0;
+                if (numericKey) {
+                  const teamSums: number[] = lastGenerated.teams.map((t) => {
+                    let sum = 0;
+                    for (const id of t.playerIds) {
+                      const p = lastGenerated.playersById[id];
+                      const v = p?.criteria[numericKey];
+                      if (v?.type === "number") sum += v.value;
+                      else sum += FALLBACK_VALUE;
+                    }
+                    return sum;
+                  });
+                  const maxSum = Math.max(...teamSums);
+                  const minSum = Math.min(...teamSums);
+                  const avgSum = teamSums.reduce((a, b) => a + b, 0) / teamSums.length;
+                  const spread = maxSum - minSum;
+                  const gapPct = avgSum > 0 ? spread / avgSum : 0;
+                  const targetGap = 0.25;
+                  fairnessScore = Math.max(0, Math.min(100, 100 * (1 - gapPct / targetGap)));
+                }
 
                 const presetSnapshot: Preset = {
                   id: newId("preset_snapshot"),
@@ -285,7 +322,7 @@ export default function AppShell() {
                   },
                   playersSnapshot: players,
                   teams: lastGenerated.teams,
-                  fairness: { score: 0, breakdown: {}, notes: [] },
+                  fairness: { score: fairnessScore, breakdown: {}, notes: [] },
                   isSaved: true,
                 };
 
